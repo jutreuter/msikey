@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "msikey"
+version = "1.0.0"
+description = "GTK4 lighting manager for MSI SteelSeries 3-zone keyboards (1770:ff00)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Roger Cooper (jutreuter)" }]
+keywords = ["msi", "steelseries", "keyboard", "backlight", "rgb", "led", "gtk4", "linux"]
+classifiers = [
+    "Environment :: X11 Applications :: GTK",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Hardware",
+    "Topic :: Utilities",
+]
+# Runtime GUI deps (PyGObject, GTK4, libadwaita) are provided by the system
+# packages python3-gi / gir1.2-gtk-4.0 / gir1.2-adw-1, not from PyPI.
+
+[project.urls]
+Homepage = "https://github.com/jutreuter/msikey"
+Issues = "https://github.com/jutreuter/msikey/issues"
+
+[project.scripts]
+msikey-gui = "msikey.__main__:main"
+
+[tool.setuptools]
+packages = ["msikey"]

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MSIKey
+GenericName=Keyboard Lighting
+Comment=Control the MSI SteelSeries backlit keyboard
+Exec=msikey-gui
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Settings;HardwareSettings;
+Keywords=keyboard;backlight;rgb;led;msi;steelseries;

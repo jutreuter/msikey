@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run MSIKey straight from this directory without installing.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}"
+exec "${PYTHON:-python3}" -m msikey "$@"

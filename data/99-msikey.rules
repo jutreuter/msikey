@@ -1,0 +1,4 @@
+# MSIKey - MSI SteelSeries RGB keyboard (1770:ff00)
+# Let the active local desktop session change the backlight without root.
+KERNEL=="hidraw*", ATTRS{idVendor}=="1770", ATTRS{idProduct}=="ff00", TAG+="uaccess", GROUP="plugdev", MODE="0660"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1770", ATTR{idProduct}=="ff00", TAG+="uaccess", GROUP="plugdev", MODE="0660"
