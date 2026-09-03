@@ -26,6 +26,22 @@ results from other models welcome.
 * **Every colour change needs a following mode packet** to take effect — setting
   a region and waiting does nothing until an `0x41` mode packet is sent.
 
+## Fn brightness keys are invisible to the OS
+
+On the GT72VR 6RD, the Fn keyboard-brightness keys (up/down/toggle) are handled
+entirely inside the embedded controller: pressing them visibly changes the
+keyboard backlight, but produces **no** Linux input event, **no** `/dev/hidraw`
+traffic, and **no** `/sys/class/leds/*` change — confirmed with
+`tools/capture-keys.py`, which watches all `/dev/input/event*` +
+`/dev/hidraw*` + LED sysfs simultaneously. The only events captured while
+holding Fn were stray key presses from typing at the terminal itself.
+
+Conclusion: this Fn-controlled backlight is a separate hardware circuit from
+the SteelSeries RGB zones msikey drives over HID, and there is no way for
+userspace to detect or react to the Fn key on this model — don't build a
+"listen for the hardware brightness key" feature; it can't work here. Worth
+re-testing on other models (`tools/capture-keys.py`) in case some expose it.
+
 ## Per-model zone map
 
 Run `tools/probe-zones.py` to test your own.
