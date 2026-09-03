@@ -15,6 +15,16 @@ results from other models welcome.
   stray error self-clears on the next apply.
 * **Zone count is fixed in firmware** — there is no way to subdivide a zone or
   address a key individually over this protocol.
+* **The intensity codes are not a brightness ramp.** Only two are pure colour:
+  `high` (code 0, full) and `medium` (code 1). `low` (2) and `light` (3) both
+  mix in bright white — a pale, washed look, *not* dimmer than `medium`. On the
+  GT72VR, codes 2 and 3 look almost identical.
+* **`medium` also shifts hue**, it is not just "dimmer": green at `medium` reads
+  yellow (RGB channel balance at lower drive). So a soft swell between `high` and
+  `medium` changes colour as it fades. Effects that need a true single colour
+  stick to `high` and toggle `off` instead.
+* **Every colour change needs a following mode packet** to take effect — setting
+  a region and waiting does nothing until an `0x41` mode packet is sent.
 
 ## Per-model zone map
 

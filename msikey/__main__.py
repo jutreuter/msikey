@@ -8,11 +8,16 @@
     python -m msikey setup           install the udev rule + msi-keyboard pkg
     python -m msikey off             turn the backlight off (remembers the colours)
     python -m msikey on              restore the colours from before it was off
+    python -m msikey effect NAME [--param value ...]   run an animation (Ctrl-C to stop)
+        effects: cycle, wave, sweep, breathe, random, pulse
+        e.g. msikey effect sweep --colors purple --speed 2
+             msikey effect breathe --colors green --style pulse
 """
 
 from __future__ import annotations
 
 import sys
+import time
 
 from . import __version__
 from .device import REGIONS, KeyboardError, apply_profile
@@ -55,6 +60,60 @@ def _cmd_on() -> int:
     return _apply(load_last_lit().copy(), "backlight restored")
 
 
+def _cmd_effect(args: list[str]) -> int:
+    from . import effects
+
+    if not args or args[0] in ("-h", "--help"):
+        print("effects: " + ", ".join(effects.BUILTINS))
+        return 0 if args else 2
+    name = args[0]
+    params: dict = {}
+    rate = effects.DEFAULT_HZ
+    it = iter(args[1:])
+    for a in it:
+        if not a.startswith("--"):
+            print(f"msikey: unexpected argument {a!r}", file=sys.stderr)
+            return 2
+        key, val = a[2:], next(it, "")
+        if key == "rate":
+            rate = float(val)
+            continue
+        try:
+            val = int(val) if val.lstrip("-").isdigit() else float(val)
+        except ValueError:
+            pass
+        params[key] = val
+
+    try:
+        eff = effects.make_effect(name, **params)
+    except (ValueError, TypeError) as e:
+        print(f"msikey: {e}", file=sys.stderr)
+        return 2
+
+    import signal
+
+    stop = {"now": False}
+    signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("now", True))
+
+    eng = effects.Engine(rate_hz=rate, on_status=lambda m: print(f"  [{m}]"))
+    eng.start(eff)
+    print(f"running {name} at {eng.rate:g} Hz - Ctrl-C to stop")
+    try:
+        while eng.running and not stop["now"]:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        eng.stop()
+        drop = f"{100 * eng.dropped / eng.frames:.0f}%" if eng.frames else "n/a"
+        print(f"\nstopped ({eng.frames} frames, {drop} dropped); restoring")
+        try:
+            apply_profile(load_last_lit())
+        except KeyboardError:
+            pass
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -77,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_off()
     if cmd == "on":
         return _cmd_on()
+    if cmd == "effect":
+        return _cmd_effect(rest)
     if cmd == "list":
         for name, p in load_profiles().items():
             zones = " ".join(f"{r}:{p.zones[r].color}" for r in REGIONS)

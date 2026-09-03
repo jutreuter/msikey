@@ -27,6 +27,9 @@ PRODUCT_ID = 0xFF00
 COLORS = ["off", "red", "orange", "yellow", "green", "sky", "blue", "purple", "white"]
 COLOR_CODES = {name: i for i, name in enumerate(COLORS)}
 
+# Names come from the `msi-keyboard` CLI but only two are a plain brightness
+# step: "high" = full colour, "medium" = dim colour. "low" AND "light" both mix
+# in bright white (a pale/washed look), they are not dimmer than "medium".
 INTENSITIES = ["high", "medium", "low", "light"]
 INTENSITY_CODES = {name: i for i, name in enumerate(INTENSITIES)}
 
