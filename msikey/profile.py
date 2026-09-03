@@ -96,6 +96,25 @@ def save_state(profile: Profile) -> None:
         _write_profile(LIT_PATH, profile)
 
 
+SEQUENCES_PATH = os.path.join(CONFIG_DIR, "sequences.json")
+
+
+def load_sequences() -> dict[str, dict]:
+    try:
+        d = json.load(open(SEQUENCES_PATH))
+        return {str(k): v for k, v in d.get("sequences", {}).items()}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_sequences(sequences: dict[str, dict]) -> None:
+    _ensure_dir()
+    tmp = SEQUENCES_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"sequences": sequences}, f, indent=2)
+    os.replace(tmp, SEQUENCES_PATH)
+
+
 def load_last_lit() -> Profile:
     """The colours to restore when switching the backlight back on."""
     try:

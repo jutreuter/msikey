@@ -10,7 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from . import APP_ID, __version__
+from . import APP_ID, __version__, effects
 from .device import (
     COLOR_RGB,
     COLORS,
@@ -27,8 +27,10 @@ from .profile import (
     autostart_enabled,
     load_last_lit,
     load_profiles,
+    load_sequences,
     load_state,
     save_profiles,
+    save_sequences,
     save_state,
     set_autostart,
 )
@@ -111,6 +113,65 @@ def _color_factory() -> Gtk.SignalListItemFactory:
     return factory
 
 
+# effect name -> parameter spec rows: (name, kind, *args)
+#   scale: lo, hi, default, digits      int: lo, hi, default
+#   color: default                      bool: default
+#   choice: [options], default
+FX_SPECS: dict[str, list[tuple]] = {
+    "cycle":   [("speed", "scale", 0.3, 5.0, 1.5, 1)],
+    "wave":    [("speed", "scale", 0.3, 5.0, 1.5, 1), ("spread", "int", 1, 7, 2)],
+    "sweep":   [("speed", "scale", 0.5, 8.0, 3.0, 1), ("colors", "color", "sky"),
+                ("bounce", "bool", False)],
+    "breathe": [("colors", "color", "purple"), ("period", "scale", 1.0, 10.0, 4.0, 1),
+                ("style", "choice", ["swell", "pulse"], "swell"),
+                ("floor", "choice", ["off", "medium"], "off")],
+    "random":  [("period", "scale", 0.1, 2.0, 0.5, 2)],
+    "pulse":   [("speed", "scale", 0.5, 6.0, 2.0, 1), ("color", "color", "red")],
+}
+
+
+def _make_param_row(spec: tuple, on_change):
+    """Return (Adw row widget, getter() -> value) for one effect parameter."""
+    name, kind = spec[0], spec[1]
+    title = name.replace("_", " ").capitalize()
+
+    if kind in ("scale", "int"):
+        if kind == "scale":
+            lo, hi, default, digits = spec[2], spec[3], spec[4], spec[5]
+            step = 10 ** -digits
+        else:
+            lo, hi, default, digits, step = spec[2], spec[3], spec[4], 0, 1
+        row = Adw.SpinRow.new_with_range(lo, hi, step)
+        row.set_digits(digits)
+        row.set_title(title)
+        row.set_value(default)
+        row.connect("notify::value", on_change)
+        return row, row.get_value
+
+    if kind == "color":
+        row = Adw.ActionRow(title=title)
+        dd = Gtk.DropDown(model=Gtk.StringList.new(COLORS[1:]), valign=Gtk.Align.CENTER)
+        dd.set_factory(_color_factory())
+        dd.set_selected(max(0, COLORS[1:].index(spec[2])))
+        dd.connect("notify::selected", on_change)
+        row.add_suffix(dd)
+        return row, lambda: COLORS[1:][dd.get_selected()]
+
+    if kind == "bool":
+        row = Adw.SwitchRow(title=title, active=bool(spec[2]))
+        row.connect("notify::active", on_change)
+        return row, row.get_active
+
+    if kind == "choice":
+        options, default = spec[2], spec[3]
+        row = Adw.ComboRow(title=title, model=Gtk.StringList.new(options))
+        row.set_selected(options.index(default))
+        row.connect("notify::selected", on_change)
+        return row, lambda: options[row.get_selected()]
+
+    raise ValueError(kind)
+
+
 class Window(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application):
         super().__init__(application=app, title="MSIKey", default_width=460,
@@ -131,10 +192,10 @@ class Window(Adw.ApplicationWindow):
         header = Adw.HeaderBar()
         toolbar.add_top_bar(header)
 
-        apply_btn = Gtk.Button(label="Apply")
-        apply_btn.add_css_class("suggested-action")
-        apply_btn.connect("clicked", lambda *_: self.apply(force=True))
-        header.pack_start(apply_btn)
+        self.apply_btn = Gtk.Button(label="Apply")
+        self.apply_btn.add_css_class("suggested-action")
+        self.apply_btn.connect("clicked", lambda *_: self.apply(force=True))
+        header.pack_start(self.apply_btn)
 
         self.power_btn = Gtk.ToggleButton(icon_name="system-shutdown-symbolic",
                                           tooltip_text="Toggle backlight")
@@ -151,8 +212,20 @@ class Window(Adw.ApplicationWindow):
         self.banner = Adw.Banner(revealed=False)
         toolbar.add_top_bar(self.banner)
 
+        self.stack = Adw.ViewStack()
+        toolbar.set_content(self.stack)
+        toolbar.add_bottom_bar(Adw.ViewSwitcherBar(stack=self.stack, reveal=True))
+
+        self.engine = effects.Engine(
+            on_status=lambda m: GLib.idle_add(self._fx_status_msg, m))
+        self.sequences: dict[str, dict] = load_sequences()
+        self._seq_rows: list = []
+        self._param_getters: dict = {}
+        self._param_rows: list = []
+
         page = Adw.PreferencesPage()
-        toolbar.set_content(page)
+        self.stack.add_titled_with_icon(page, "static", "Static",
+                                        "display-brightness-symbolic")
 
         # -- effect ---------------------------------------------------------
         g_effect = Adw.PreferencesGroup(title="Effect")
@@ -234,9 +307,269 @@ class Window(Adw.ApplicationWindow):
         self.status_row.add_suffix(self.setup_btn)
         g_beh.add(self.status_row)
 
+        self._build_effects_page()
+        self._build_sequence_page()
+
         self._refresh_profile_list()
         self._sync_from_profile()
         self._refresh_status()
+        self._rebuild_params()
+        self.stack.connect("notify::visible-child-name", self._on_tab)
+        self.connect("close-request", self._on_close)
+
+    def _on_close(self, *_):
+        self.engine.stop()
+        return False
+
+    def _on_tab(self, *_):
+        on_static = self.stack.get_visible_child_name() == "static"
+        self.apply_btn.set_visible(on_static)
+        if not on_static and self.stack.get_visible_child_name() == "effects":
+            self._fx_apply()          # start whatever the effects tab has selected
+        elif on_static:
+            if self.engine.running:
+                self.engine.stop()
+            self.apply(force=True)
+
+    # ================================================================== #
+    # Effects tab
+    # ================================================================== #
+    def _build_effects_page(self) -> None:
+        page = Adw.PreferencesPage()
+        self.stack.add_titled_with_icon(page, "effects", "Effects",
+                                        "media-playlist-repeat-symbolic")
+
+        g = Adw.PreferencesGroup(
+            title="Animation",
+            description="Host-driven - runs while MSIKey is open")
+        page.add(g)
+
+        names = ["None"] + [n.capitalize() for n in effects.BUILTINS] + \
+                [f"↻ {n}" for n in self.sequences]
+        self.fx_names = ["none"] + list(effects.BUILTINS) + \
+                        [f"seq:{n}" for n in self.sequences]
+        self.fx_row = Adw.ComboRow(title="Effect",
+                                   model=Gtk.StringList.new(names))
+        self.fx_row.connect("notify::selected", self._on_fx_pick)
+        g.add(self.fx_row)
+
+        self.fx_status = Adw.ActionRow(title="Status", subtitle="stopped")
+        g.add(self.fx_status)
+
+        self.fx_params = Adw.PreferencesGroup(title="Parameters")
+        page.add(self.fx_params)
+
+        gs = Adw.PreferencesGroup()
+        page.add(gs)
+        save_btn = Gtk.Button(label="Save as profile…", margin_top=6,
+                              margin_bottom=6, margin_start=6, margin_end=6)
+        save_btn.connect("clicked", lambda *_: self._save_fx_profile())
+        srow = Adw.PreferencesRow(activatable=False)
+        srow.set_child(save_btn)
+        gs.add(srow)
+
+    def _on_fx_pick(self, *_):
+        if self._loading:
+            return
+        self._rebuild_params()
+        self._fx_apply()
+
+    def _rebuild_params(self) -> None:
+        for row in self._param_rows:
+            self.fx_params.remove(row)
+        self._param_rows.clear()
+        self._param_getters = {}
+        key = self.fx_names[self.fx_row.get_selected()]
+        spec = FX_SPECS.get(key, [])
+        self.fx_params.set_visible(bool(spec))
+        for p in spec:
+            row, getter = _make_param_row(p, self._on_param_changed)
+            self.fx_params.add(row)
+            self._param_rows.append(row)
+            self._param_getters[p[0]] = getter
+
+    def _on_param_changed(self, *_):
+        if self._loading:
+            return
+        if self.engine.running:
+            self._fx_apply()
+
+    def _current_effect(self) -> effects.Effect | None:
+        key = self.fx_names[self.fx_row.get_selected()]
+        if key == "none":
+            return None
+        if key.startswith("seq:"):
+            return effects.Sequence.from_dict(self.sequences[key[4:]])
+        params = {name: get() for name, get in self._param_getters.items()}
+        try:
+            return effects.make_effect(key, **params)
+        except (ValueError, TypeError):
+            return None
+
+    def _fx_apply(self) -> None:
+        eff = self._current_effect()
+        if eff is None:
+            if self.engine.running:
+                self.engine.stop()
+            self.fx_status.set_subtitle("stopped")
+            self.apply(force=True)      # back to the static profile
+            return
+        self.engine.start(eff)
+        self.fx_status.set_subtitle(f"running at {self.engine.rate:g} Hz")
+
+    def _fx_status_msg(self, msg: str) -> bool:
+        self.fx_status.set_subtitle(msg)
+        return False
+
+    def _save_fx_profile(self) -> None:
+        key = self.fx_names[self.fx_row.get_selected()]
+        if key in ("none",) or key.startswith("seq:"):
+            self._toast("Pick a built-in effect first")
+            return
+        params = {name: get() for name, get in self._param_getters.items()}
+        prof = Profile(name=f"{key.capitalize()} (effect)")
+        prof.mode = "normal"
+        # stash effect spec in the profile name-space via a saved sequence-like blob
+        self.sequences[prof.name] = {"effect": key, "params": params}
+        save_sequences(self.sequences)
+        self._toast(f"Saved “{prof.name}”")
+        self._reload_fx_names()
+
+    def _reload_fx_names(self) -> None:
+        self._loading = True
+        try:
+            names = ["None"] + [n.capitalize() for n in effects.BUILTINS] + \
+                    [f"↻ {n}" for n in self.sequences]
+            self.fx_names = ["none"] + list(effects.BUILTINS) + \
+                            [f"seq:{n}" for n in self.sequences]
+            self.fx_row.set_model(Gtk.StringList.new(names))
+        finally:
+            self._loading = False
+
+    # ================================================================== #
+    # Sequence tab (keyframe editor)
+    # ================================================================== #
+    def _build_sequence_page(self) -> None:
+        page = Adw.PreferencesPage()
+        self.stack.add_titled_with_icon(page, "sequence", "Sequence",
+                                        "view-list-symbolic")
+        g = Adw.PreferencesGroup(
+            title="Keyframes",
+            description="Each frame holds its colours for a time, then the next")
+        page.add(g)
+        self.seq_group = g
+
+        self.seq_frames: list[dict] = [
+            {"zones": {r: ("red", "high") for r in REGIONS}, "hold": 0.5},
+            {"zones": {r: ("blue", "high") for r in REGIONS}, "hold": 0.5},
+        ]
+        self._rebuild_seq_rows()
+
+        gb = Adw.PreferencesGroup()
+        page.add(gb)
+        box = Gtk.Box(spacing=6, homogeneous=True, margin_top=6, margin_bottom=6,
+                      margin_start=6, margin_end=6)
+        for label, cb in (("Add frame", self._seq_add),
+                          ("Play", self._seq_play),
+                          ("Stop", self._seq_stop),
+                          ("Save…", self._seq_save)):
+            b = Gtk.Button(label=label)
+            b.connect("clicked", lambda _w, cb=cb: cb())
+            box.append(b)
+        r = Adw.PreferencesRow(activatable=False)
+        r.set_child(box)
+        gb.add(r)
+
+    def _rebuild_seq_rows(self) -> None:
+        for row in self._seq_rows:
+            self.seq_group.remove(row)
+        self._seq_rows.clear()
+        for i, fr in enumerate(self.seq_frames):
+            row = Adw.ActionRow(title=f"Frame {i + 1}")
+            for r in REGIONS:
+                dd = Gtk.DropDown(model=Gtk.StringList.new(COLORS),
+                                  valign=Gtk.Align.CENTER)
+                dd.set_factory(_color_factory())
+                dd.set_selected(COLORS.index(fr["zones"][r][0]))
+                dd.connect("notify::selected", self._seq_edit, i, r)
+                row.add_suffix(dd)
+            spin = Gtk.SpinButton.new_with_range(0.1, 10.0, 0.1)
+            spin.set_value(fr["hold"])
+            spin.set_valign(Gtk.Align.CENTER)
+            spin.set_tooltip_text("Hold (seconds)")
+            spin.connect("value-changed", self._seq_hold, i)
+            row.add_suffix(spin)
+            rm = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+            rm.add_css_class("flat")
+            rm.connect("clicked", lambda _w, i=i: self._seq_del(i))
+            row.add_suffix(rm)
+            self.seq_group.add(row)
+            self._seq_rows.append(row)
+
+    def _seq_edit(self, dd, _p, i, region):
+        if self._loading:
+            return
+        color = COLORS[dd.get_selected()]
+        self.seq_frames[i]["zones"][region] = (color,
+                                               self.seq_frames[i]["zones"][region][1])
+        if self.engine.running:
+            self._seq_play()
+
+    def _seq_hold(self, spin, i):
+        if self._loading:
+            return
+        self.seq_frames[i]["hold"] = spin.get_value()
+        if self.engine.running:
+            self._seq_play()
+
+    def _seq_add(self):
+        self.seq_frames.append(
+            {"zones": {r: ("off", "high") for r in REGIONS}, "hold": 0.5})
+        self._rebuild_seq_rows()
+
+    def _seq_del(self, i):
+        if len(self.seq_frames) > 1:
+            self.seq_frames.pop(i)
+            self._rebuild_seq_rows()
+            if self.engine.running:
+                self._seq_play()
+
+    def _seq_to_dict(self) -> dict:
+        return {"loop": True, "keyframes": [
+            {"hold": f["hold"], "mode": "normal",
+             "zones": {r: {"color": c, "intensity": inten}
+                       for r, (c, inten) in f["zones"].items()}}
+            for f in self.seq_frames]}
+
+    def _seq_play(self):
+        self.engine.start(effects.Sequence.from_dict(self._seq_to_dict()))
+        self.fx_status.set_subtitle("sequence running")
+
+    def _seq_stop(self):
+        self.engine.stop()
+        self.apply(force=True)
+
+    def _seq_save(self):
+        dialog = Adw.MessageDialog(transient_for=self, heading="Save sequence",
+                                   body="Name:")
+        entry = Gtk.Entry(text="My sequence", activates_default=True)
+        dialog.set_extra_child(entry)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+
+        def on_resp(_d, resp):
+            if resp != "save":
+                return
+            name = entry.get_text().strip() or "My sequence"
+            self.sequences[name] = self._seq_to_dict()
+            save_sequences(self.sequences)
+            self._reload_fx_names()
+            self._toast(f"Saved “{name}”")
+
+        dialog.connect("response", on_resp)
+        dialog.present()
 
     # ------------------------------------------------------------------ #
     # syncing widgets <-> self.profile
@@ -292,6 +625,8 @@ class Window(Adw.ApplicationWindow):
     def _on_power(self, btn: Gtk.ToggleButton):
         if self._loading:
             return
+        if self.engine.running:
+            self.engine.stop()
         if btn.get_active():  # pressed in == turn off, remembering the colours
             if self.profile.is_lit():
                 self._last_on = self.profile.copy()
@@ -486,6 +821,11 @@ class App(Adw.Application):
         if not self.win:
             self.win = Window(self)
         self.win.present()
+
+    def do_shutdown(self):
+        if self.win:
+            self.win.engine.stop()
+        Adw.Application.do_shutdown(self)
 
     def _about(self, *_):
         about = Adw.AboutWindow(
