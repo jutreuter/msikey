@@ -15,13 +15,20 @@ results from other models welcome.
   stray error self-clears on the next apply.
 * **Zone count is fixed in firmware** — there is no way to subdivide a zone or
   address a key individually over this protocol.
-* **The intensity codes are not a brightness ramp.** Only two are pure colour:
-  `high` (code 1, full) and `medium` (code 0). `low` (2) and `light` (3) both
-  mix in bright white — a pale, washed look, *not* dimmer than `medium`. On the
-  GT72VR, codes 2 and 3 look almost identical. (An earlier pass at this table
-  had `high`/`medium` swapped - code 0 is the dim, hue-shifted one - caught by
-  testing the actual GUI, not just the raw byte probe in
-  `tools/intensity-test.py`.)
+* **The four intensity codes are not a brightness ramp — they're a 2×2 grid**
+  of {pure colour, colour+white} × {high brightness, low brightness}, and the
+  legacy `msi-keyboard` names (`high`/`medium`/`low`/`light`) hide that shape:
+
+  | | pure colour | colour + white |
+  |---|---|---|
+  | **high brightness** | `high` (code 1) | `light` (code 3) |
+  | **low brightness** | `medium` (code 0) | `low` (code 2) |
+
+  `high`/`medium` stay saturated; `light`/`low` both mix in white for a pale,
+  washed look and are just the bright/dim pair of that same mix. (An earlier
+  pass at this table had `high`/`medium` swapped and `low`/`light` marked as
+  "almost identical" — both wrong, caught by testing the actual GUI, not just
+  the raw byte probe in `tools/intensity-test.py`.)
 * **`medium` also shifts hue**, it is not just "dimmer": green at `medium` reads
   yellow (RGB channel balance at lower drive). So a soft swell between `high` and
   `medium` changes colour as it fades. Effects that need a true single colour
