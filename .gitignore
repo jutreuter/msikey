@@ -7,6 +7,16 @@ build/
 dist/
 .venv/
 venv/
+.pybuild/
+
+# Debian packaging build byproducts (debian/ source files themselves are tracked)
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.debhelper
+debian/*.debhelper.log
+debian/*.substvars
+debian/msikey/
 
 # Editors / OS
 .vscode/

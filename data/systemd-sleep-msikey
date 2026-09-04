@@ -1,0 +1,24 @@
+#!/bin/sh
+# MSIKey - reapply the keyboard backlight after suspend/hibernate.
+#
+# Installed to /usr/lib/systemd/system-sleep/msikey. systemd-logind runs
+# every script in that directory as root, once before sleep ("pre") and
+# once after waking up ("post"); we only care about "post" - the keyboard
+# firmware (and USB re-enumeration) resets the backlight to off, and
+# nothing else tells msikey to restore it since this isn't a fresh login.
+
+[ "$1" = post ] || exit 0
+
+# Give the USB stack a moment to re-enumerate the keyboard's hidraw node.
+sleep 2
+
+loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | sort -u |
+while read -r user; do
+    [ -n "$user" ] || continue
+    home=$(getent passwd "$user" | cut -d: -f6)
+    [ -n "$home" ] || continue
+    su - "$user" -c 'command -v msikey-gui >/dev/null 2>&1 && msikey-gui apply --last' \
+        >/dev/null 2>&1 &
+done
+wait
+exit 0

@@ -1,0 +1,34 @@
+Source: msikey
+Section: utils
+Priority: optional
+Maintainer: jutreuter <jutreuter@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               pybuild-plugin-pyproject,
+               python3-all,
+               python3-setuptools
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/jutreuter/msikey
+
+Package: msikey
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         python3-gi,
+         gir1.2-gtk-4.0,
+         gir1.2-adw-1,
+         pkexec,
+         udev
+Recommends: msi-keyboard
+Description: GTK4 lighting manager for MSI SteelSeries 3-zone keyboards
+ MSIKey controls the RGB backlight zones on MSI SteelSeries 3-zone
+ keyboards (USB 1770:ff00, as found in MSI GT/GE/GS laptops). It replaces
+ hand-typed msi-keyboard commands and systemd units with a GUI: pick a
+ colour and brightness per zone, choose an animation or build a custom
+ keyframe sequence, save profiles, and re-apply lighting automatically
+ at login.
+ .
+ Talks straight to /dev/hidrawN alongside the in-kernel gt683r_led
+ driver; no libusb detach and no root needed once the bundled udev rule
+ is installed.

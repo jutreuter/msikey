@@ -24,8 +24,9 @@ import time
 from dataclasses import dataclass, field
 
 from .device import (
+    COLOR_CODES,
     COLORS,
-    INTENSITIES,
+    INTENSITY_CODES,
     MODE_CODES,
     REGION_CODES,
     REGIONS,
@@ -411,7 +412,7 @@ class Engine:
         for r in changed:
             z = frame.zones[r]
             pkt = bytes([0x01, 0x02, 0x42, REGION_CODES[r],
-                         COLORS.index(z.color), INTENSITIES.index(z.intensity), 0, 0])
+                         COLOR_CODES[z.color], INTENSITY_CODES[z.intensity], 0, 0])
             if self._ioctl(fd, pkt):
                 last[r] = z
             else:

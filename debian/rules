@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_installudev:
+	dh_installudev --priority=99
+
+override_dh_install:
+	dh_install
+	install -Dm755 data/systemd-sleep-msikey debian/msikey/usr/lib/systemd/system-sleep/msikey

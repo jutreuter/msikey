@@ -9,6 +9,7 @@ PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
 APPS="$PREFIX/share/applications"
 RULE=/etc/udev/rules.d/99-msikey.rules
+SLEEP_HOOK=/usr/lib/systemd/system-sleep/msikey
 
 sudo_run() {
     if [ "$(id -u)" -eq 0 ]; then sh -c "$1"
@@ -20,15 +21,15 @@ sudo_run() {
 
 if [ "${1:-}" = "--uninstall" ]; then
     rm -f "$BIN/msikey-gui" "$APPS/io.github.msikey.MSIKey.desktop"
-    sudo_run "rm -f $RULE && udevadm control --reload" || true
-    echo "removed launcher, desktop entry and udev rule (config in ~/.config/msikey kept)"
+    sudo_run "rm -f $RULE $SLEEP_HOOK && udevadm control --reload" || true
+    echo "removed launcher, desktop entry, udev rule and sleep hook (config in ~/.config/msikey kept)"
     exit 0
 fi
 
 echo "==> apt dependencies (GTK4 + libadwaita for Python)"
 if command -v apt-get >/dev/null; then
     MISSING=""
-    for p in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 policykit-1; do
+    for p in python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 pkexec; do
         dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"
     done
     if [ -n "$MISSING" ]; then
@@ -64,6 +65,9 @@ echo "==> udev rule -> $RULE"
 sudo_run "cp '$HERE/data/99-msikey.rules' $RULE && udevadm control --reload && \
     (udevadm trigger --subsystem-match=hidraw --attr-match=idVendor=1770 --action=add || \
      udevadm trigger --subsystem-match=hidraw)"
+
+echo "==> resume-from-suspend hook -> $SLEEP_HOOK"
+sudo_run "cp '$HERE/data/systemd-sleep-msikey' $SLEEP_HOOK && chmod 755 $SLEEP_HOOK"
 
 case ":$PATH:" in
     *":$BIN:"*) ;;

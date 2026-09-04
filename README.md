@@ -24,7 +24,7 @@ The keyboard takes HID *feature reports* (report id `1`):
 
 * regions: `left=1 middle=2 right=3`
 * colours: `off orange yellow green sky blue purple white red` → `0..8`
-* intensity: `high medium low light` → `0..3`
+* intensity: `high=1 medium=0 low=2 light=3` (see [HARDWARE.md](HARDWARE.md) — not a simple brightness ramp)
 * modes: `normal gaming breathe demo wave` → `1..5`
 
 MSIKey writes these straight to `/dev/hidrawN` with `HIDIOCSFEATURE`. That works
@@ -84,6 +84,7 @@ msikey-gui setup            # install the udev rule + msi-keyboard pkg (asks for
 | `msikey/profile.py` | profiles, last-state, login autostart |
 | `msikey/udev.py` | udev-rule installer |
 | `msikey/gui.py` | GTK4 / libadwaita UI |
+| `data/systemd-sleep-msikey` | reapplies the backlight after suspend/hibernate (installed to `/usr/lib/systemd/system-sleep/msikey`) |
 | `~/.config/msikey/` | `profiles.json`, `state.json`, `last-lit.json` |
 
 ## Requirements

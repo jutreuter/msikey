@@ -30,8 +30,11 @@ COLOR_CODES = {name: i for i, name in enumerate(COLORS)}
 # Names come from the `msi-keyboard` CLI but only two are a plain brightness
 # step: "high" = full colour, "medium" = dim colour. "low" AND "light" both mix
 # in bright white (a pale/washed look), they are not dimmer than "medium".
+# The hardware codes for high/medium are NOT in name order - verified live on
+# a GT72VR 6RD: code 1 is full/pure colour ("high"), code 0 is the dimmer,
+# hue-shifted one ("medium"). See HARDWARE.md.
 INTENSITIES = ["high", "medium", "low", "light"]
-INTENSITY_CODES = {name: i for i, name in enumerate(INTENSITIES)}
+INTENSITY_CODES = {"high": 1, "medium": 0, "low": 2, "light": 3}
 
 REGIONS = ["left", "middle", "right"]
 REGION_CODES = {"left": 1, "middle": 2, "right": 3}

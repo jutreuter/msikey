@@ -1,0 +1,10 @@
+msikey (1.0.1-1) UNRELEASED; urgency=medium
+
+  * Fix swapped high/medium intensity codes (code 1 is full colour, code 0
+    is the dim/hue-shifted one - was backwards). Fix effects.py to look up
+    the byte via INTENSITY_CODES instead of INTENSITIES.index(), which
+    would have gone out of sync with this fix.
+  * Add systemd-sleep hook to restore the backlight after
+    suspend/resume.
+
+ -- jutreuter <jutreuter@users.noreply.github.com>  Thu, 03 Sep 2026 19:22:23 -0400
