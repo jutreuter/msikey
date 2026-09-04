@@ -38,6 +38,17 @@ from .udev import driver_installed, rule_installed, setup_access
 
 _UNSAVED = "Custom (unsaved)"
 
+# Display labels for the intensity dropdown. The hardware codes are a 2x2
+# grid (pure colour / colour+white) x (high / low brightness), not a ramp -
+# see HARDWARE.md - so the labels spell that out instead of using the bare
+# high/medium/low/light names, which read as four brightness steps.
+INTENSITY_LABELS = {
+    "high": "High",
+    "medium": "Low",
+    "low": "Low + White",
+    "light": "High + White",
+}
+
 
 # MSI "black & red" gaming colourway.
 _MSI_RED = "#d81f26"
@@ -254,9 +265,10 @@ class Window(Adw.ApplicationWindow):
             cdd = Gtk.DropDown(model=Gtk.StringList.new(COLORS), valign=Gtk.Align.CENTER)
             cdd.set_factory(_color_factory())
             cdd.connect("notify::selected", self._on_zone_changed, region)
-            idd = Gtk.DropDown.new_from_strings([i.capitalize() for i in INTENSITIES])
+            idd = Gtk.DropDown.new_from_strings(
+                [INTENSITY_LABELS[i] for i in INTENSITIES])
             idd.set_valign(Gtk.Align.CENTER)
-            idd.set_tooltip_text("Brightness")
+            idd.set_tooltip_text("Brightness / white mix")
             idd.connect("notify::selected", self._on_zone_changed, region)
             row.add_suffix(cdd)
             row.add_suffix(idd)
