@@ -254,7 +254,7 @@ class Window(Adw.ApplicationWindow):
             title="Zones", description="This keyboard has three lighting zones")
         page.add(g_zones)
         self.link_row = Adw.SwitchRow(title="Link zones",
-                                      subtitle="Apply one colour to all three")
+                                      subtitle="Apply one colour and brightness to all three")
         self.link_row.connect("notify::active", lambda *_: self._sync_from_profile())
         g_zones.add(self.link_row)
 
@@ -264,6 +264,7 @@ class Window(Adw.ApplicationWindow):
             row = Adw.ActionRow(title=region.capitalize())
             cdd = Gtk.DropDown(model=Gtk.StringList.new(COLORS), valign=Gtk.Align.CENTER)
             cdd.set_factory(_color_factory())
+            cdd.set_tooltip_text("Colour")
             cdd.connect("notify::selected", self._on_zone_changed, region)
             idd = Gtk.DropDown.new_from_strings(
                 [INTENSITY_LABELS[i] for i in INTENSITIES])
